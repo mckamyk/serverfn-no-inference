@@ -2,33 +2,36 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/start'
 import { useQuery } from 'node_modules/@tanstack/react-query/build/modern/useQuery.cjs'
 import { z } from 'zod'
+import { zodValidator } from '@tanstack/zod-adapter'
 
-const dataSchema = z.object({
-  foo: z.literal('bar'),
-})
+type Person = {
+  name: string
+}
 
-type DataType = z.infer<typeof dataSchema>
+export const greet = createServerFn({ method: 'GET' })
+  .validator((person: unknown): Person => {
+    if (typeof person !== 'object' || person === null) {
+      throw new Error('Person must be an object')
+    }
 
-const zodDirect = createServerFn()
-  .validator(dataSchema)
-  .handler(({ data }) => data.foo) // type inference is fine here
+    if ('name' in person && typeof person.name !== 'string') {
+      throw new Error('Person.name must be a string')
+    }
 
-const zodVerbose = createServerFn()
-  .validator((d: unknown) => dataSchema.parse(d))
-  .handler(({ data }) => data.foo) // type inference is fine here
-
-const manual = createServerFn()
-  .validator((d: unknown) => {
-    if (typeof d !== 'object' || d === null)
-      throw new Error('data must be an object')
-
-    if (!('foo' in d)) throw new Error('data must have a foo property')
-
-    if (d.foo !== 'bar') throw new Error('data.foo must be "bar"')
-
-    return d as DataType
+    return person as Person
   })
-  .handler(({ data }) => data.foo) // type inference is fine here
+  .handler(
+    async ({
+      data, // Person
+    }) => {
+      return `Hello, ${data.name}!`
+    },
+  )
+
+function test() {
+  greet({ data: { name: 'John' } }) // OK
+  greet({ data: { name: 123 } }) // Error: Argument of type '{ name: number; }' is not assignable to parameter of type 'Person'.
+}
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -47,13 +50,7 @@ function Home() {
       // to show that the types are not working.
 
       // @ts-expect-error
-      const r1 = zodDirect({ data: { bad: 42 } }) // incorrect input data
-
-      // @ts-expect-error
-      const r2 = zodVerbose({ data: { bad: 42 } }) // incorrect input data
-
-      // @ts-expect-error
-      const r3 = manual({ data: { bad: 42 } }) // incorrect input data
+      const r3 = greet({ data: { bad: 42 } }) // incorrect input data
 
       return ''
     },
